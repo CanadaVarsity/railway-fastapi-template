@@ -1,47 +1,23 @@
-from __future__ import annotations
-
-from typing import Generator, Optional
 from sqlalchemy import create_engine
-from sqlalchemy.engine import Engine
 from sqlalchemy.orm import sessionmaker, Session
+from backend.app.core.config import DATABASE_URL
 
-from backend.db import get_database_url
+engine = None
+SessionLocal = None
 
-_engine: Engine | None = None
-SessionLocal: sessionmaker | None = None
+if DATABASE_URL:
+    # Railway uses postgres://, SQLAlchemy needs postgresql://
+    url = DATABASE_URL.replace("postgres://", "postgresql://", 1) if DATABASE_URL.startswith("postgres://") else DATABASE_URL
+    engine = create_engine(url, pool_pre_ping=True)
+    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-
-def get_engine() -> Engine | None:
-    """
-    Central engine for ORM Session usage.
-    Keeps your existing behavior: if DATABASE_URL is missing, engine is None.
-    """
-    global _engine, SessionLocal
-    if _engine is not None:
-        return _engine
-
-    url = get_database_url()
-    if not url:
-        _engine = None
-        SessionLocal = None
-        return None
-
-    _engine = create_engine(url, pool_pre_ping=True)
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=_engine)
-    return _engine
-
-
-def get_db() -> Generator[Optional[Session], None, None]:
-    """
-    FastAPI dependency. Yields a Session, or None if DB isn't configured.
-    """
-    engine = get_engine()
-    if engine is None or SessionLocal is None:
+def get_db():
+    """Dependency for FastAPI endpoints"""
+    if SessionLocal is None:
         yield None
-        return
-
-    db: Session = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+    else:
+        db = SessionLocal()
+        try:
+            yield db
+        finally:
+            db.close()
