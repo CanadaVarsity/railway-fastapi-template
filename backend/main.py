@@ -1,6 +1,5 @@
 import os
 import time
-from typing import Optional
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -35,11 +34,11 @@ app.add_middleware(
 )
 
 
-def _ensure_schema_and_seed_legacy_sql():
+def _ensure_schema_and_seed_legacy_sql() -> None:
     """
     Phase 2 transitional helper.
     - Uses your existing raw SQL approach.
-    - Guarded by AUTO_CREATE_SCHEMA so production can turn this off once Alembic is live.
+    - Guarded by AUTO_CREATE_SCHEMA so prod can turn this off once Alembic is live.
     """
     engine = legacy_get_engine()
     if engine is None:
@@ -81,7 +80,7 @@ def _ensure_schema_and_seed_legacy_sql():
 
 
 @app.on_event("startup")
-def startup():
+def startup() -> None:
     # Initialize ORM engine/session (no-op if DATABASE_URL missing)
     orm_get_engine()
 
@@ -92,7 +91,6 @@ def startup():
 
 @app.get("/health", tags=["system"])
 async def health():
-    # DB status check (safe)
     db_status = "missing"
     try:
         e = legacy_get_engine()
@@ -103,7 +101,12 @@ async def health():
     except Exception:
         db_status = "error"
 
-    return {"status": "ok", "build": BUILD_STAMP, "marker": "TRUTH_BASELINE", "database": db_status}
+    return {
+        "status": "ok",
+        "build": BUILD_STAMP,
+        "marker": "TRUTH_BASELINE",
+        "database": db_status,
+    }
 
 
 @app.get("/__fingerprint", tags=["system"])
