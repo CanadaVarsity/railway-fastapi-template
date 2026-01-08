@@ -3,7 +3,7 @@ import sys
 import subprocess
 
 def main():
-    port = os.getenv("PORT", "8000")
+    port = os.getenv("PORT", "8080")
     cmd = [
         sys.executable, "-m", "uvicorn",
         "backend.main:app",
