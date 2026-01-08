@@ -1,9 +1,16 @@
 import os
 import time
+from typing import Optional
+
 from fastapi import FastAPI
-from sqlalchemy import text
-from backend.db import get_engine
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
+
+from backend.db import get_engine as legacy_get_engine
+from backend.app.api.v1.router import router as v1_router
+from backend.app.core.config import AUTO_CREATE_SCHEMA
+from backend.app.db.session import get_engine as orm_get_engine
+
 
 BUILD_STAMP = (
     os.getenv("RAILWAY_DEPLOYMENT_ID")
@@ -13,15 +20,28 @@ BUILD_STAMP = (
 
 app = FastAPI(
     title="CanadaVarsity API (Truth Baseline)",
-    version="0.1.0",
+    version="0.2.0",
     docs_url="/api/docs",
     redoc_url="/api/redoc",
     openapi_url="/api/openapi.json",
 )
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-def _ensure_schema_and_seed():
-    engine = get_engine()
+
+def _ensure_schema_and_seed_legacy_sql():
+    """
+    Phase 2 transitional helper.
+    - Uses your existing raw SQL approach.
+    - Guarded by AUTO_CREATE_SCHEMA so production can turn this off once Alembic is live.
+    """
+    engine = legacy_get_engine()
     if engine is None:
         return
 
@@ -59,25 +79,42 @@ def _ensure_schema_and_seed():
                 ('Westdale', 'Eastport', 'final');
             """))
 
+
 @app.on_event("startup")
 def startup():
-    _ensure_schema_and_seed()
+    # Initialize ORM engine/session (no-op if DATABASE_URL missing)
+    orm_get_engine()
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+    # Only auto-create schema in dev or if explicitly enabled
+    if AUTO_CREATE_SCHEMA:
+        _ensure_schema_and_seed_legacy_sql()
+
 
 @app.get("/health", tags=["system"])
 async def health():
-    return {"status": "ok", "build": BUILD_STAMP, "marker": "TRUTH_BASELINE"}
+    # DB status check (safe)
+    db_status = "missing"
+    try:
+        e = legacy_get_engine()
+        if e is not None:
+            with e.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            db_status = "ok"
+    except Exception:
+        db_status = "error"
+
+    return {"status": "ok", "build": BUILD_STAMP, "marker": "TRUTH_BASELINE", "database": db_status}
+
 
 @app.get("/__fingerprint", tags=["system"])
-async def fingerprint():
-    return {"fingerprint": BUILD_STAMP, "marker": "TRUTH_BASELINE"}
+def fingerprint():
+    return {"marker": "TRUTH_BASELINE_RAILWAY", "build": BUILD_STAMP}
+
+
+@app.get("/__routes", tags=["system"])
+def __routes():
+    return sorted([r.path for r in app.routes])
+
 
 @app.get("/", tags=["system"])
 async def root():
@@ -97,68 +134,6 @@ async def root():
         },
     }
 
-@app.get("/api/v1/status", tags=["v1"])
-async def v1_status():
-    return {
-        "status": "operational_DEPLOY_PROOF_1767757600",
-        "build": BUILD_STAMP,
-        "marker": "TRUTH_BASELINE",
-    }
 
-
-@app.get("/api/v1/teams", tags=["v1"])
-def teams():
-    engine = get_engine()
-    if engine is None:
-        return {
-            "build": BUILD_STAMP,
-            "marker": "TRUTH_BASELINE",
-            "teams": [
-                {"id": 1, "school": "Montagio Ridge", "sport": "Football"},
-                {"id": 2, "school": "Everest Elementary (demo)", "sport": "Basketball"},
-            ],
-            "source": "stub",
-        }
-
-    with engine.begin() as conn:
-        rows = conn.execute(text("SELECT id, school, sport FROM teams ORDER BY id;")).mappings().all()
-        return {
-            "build": BUILD_STAMP,
-            "marker": "TRUTH_BASELINE",
-            "teams": [dict(r) for r in rows],
-            "source": "db",
-        }
-
-
-
-@app.get("/api/v1/games", tags=["v1"])
-def games():
-    engine = get_engine()
-    if engine is None:
-        return {
-            "build": BUILD_STAMP,
-            "marker": "TRUTH_BASELINE",
-            "games": [
-                {"id": 101, "home": "Montagio Ridge", "away": "Northview", "status": "scheduled"},
-                {"id": 102, "home": "Westdale", "away": "Eastport", "status": "final"},
-            ],
-            "source": "stub",
-        }
-
-    with engine.begin() as conn:
-        rows = conn.execute(text("SELECT id, home, away, status FROM games ORDER BY id;")).mappings().all()
-        return {
-            "build": BUILD_STAMP,
-            "marker": "TRUTH_BASELINE",
-            "games": [dict(r) for r in rows],
-            "source": "db",
-        }
-
-
-@app.get("/__fingerprint", tags=["system"])
-def __fingerprint():
-    return {"marker": "TRUTH_BASELINE_RAILWAY", "build": BUILD_STAMP}
-
-@app.get("/__routes", tags=["system"])
-def __routes():
-    return sorted([r.path for r in app.routes])
+# Mount v1 API
+app.include_router(v1_router)
