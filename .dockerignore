@@ -1,0 +1,39 @@
+# Python
+.venv
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Git
+.git
+.gitignore
+
+# OS/editor junk
+*.swp
+*.swo
+.DS_Store
+
+# Archives / big files
+*.zip
+*.tar.gz
+*.tgz
+*.7z
+
+# Frontend / docs (not needed for backend image)
+frontend/
+docs/
+deployment/
+database/
+
+# Node
+node_modules/
+npm-debug.log
+yarn.lock
+pnpm-lock.yaml
+
+# Misc big assets (add more if needed)
+*.mp4
+*.mov
+*.psd
+*.ai
