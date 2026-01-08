@@ -1,12 +1,18 @@
 import os
-import uvicorn
+import sys
+import subprocess
 
-port = int(os.environ.get("PORT", "8080"))
+def main():
+    port = os.getenv("PORT", "8000")
+    cmd = [
+        sys.executable, "-m", "uvicorn",
+        "backend.main:app",
+        "--host", "0.0.0.0",
+        "--port", port,
+    ]
+    # Optional: reduce noise
+    # cmd += ["--log-level", "info"]
+    raise SystemExit(subprocess.call(cmd))
 
 if __name__ == "__main__":
-    uvicorn.run(
-        "backend.main:app",
-        host="0.0.0.0",
-        port=port,
-        log_level="info",
-    )
+    main()
